@@ -1,4 +1,4 @@
-# NAM EQ Matcher 🎸
+# NAM EQ Matcher
 
 Clone a guitar tone from a finished recording.
 
