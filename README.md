@@ -1,9 +1,9 @@
 # NAM EQ Matcher 🎸
 
-Clone a guitar tone from a finished recording — no DI from the original player needed.
+Clone a guitar tone from a finished recording.
 
 Combines **NAM** (nonlinear amp character: gain structure, saturation, compression, sag)
-with a **Tone Match**-style matched impulse response (linear EQ/cab correction).
+with a **EQ Match**-style matched impulse response (linear EQ/cab correction).
 
 ## How it works
 
@@ -23,7 +23,7 @@ The pipeline:
    the fizz region, spectral flux, and MFCC texture statistics. These capture what an EQ
    cannot fix — clipping behavior, compression feel, harmonic density. A two-stage search
    (coarse over all captures, fine over the top 5) finds the best capture + drive setting.
-2. **Frequency match (Tone Match half).** The winning rig's output is compared to the
+2. **Frequency match (EQ Match half).** The winning rig's output is compared to the
    target's 1/6-octave smoothed long-term spectrum. The difference (clipped to ±18 dB,
    tapered at the extremes) is turned into a minimum-phase FIR and exported as
    `match_ir.wav` — load it in the NAM plugin's IR slot as your "cabinet".
