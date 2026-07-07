@@ -1,0 +1,9 @@
+numpy
+scipy
+soundfile
+matplotlib
+torch
+neural-amp-modeler>=0.13
+gradio>=4.0
+requests
+demucs  # optional: guitar stem extraction from full mixes
