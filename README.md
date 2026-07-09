@@ -113,8 +113,6 @@ load `match_ir.wav` in the **IR slot** (disable any other cab), adjust Output to
 
 ## Project layout
 
-The Python package keeps the internal name `tonematch` (renaming it would break
-imports and your venv); the product name is **NAM EQ Matcher**.
 
 ```
 tonematch/
