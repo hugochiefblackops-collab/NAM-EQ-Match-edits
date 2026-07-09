@@ -3,14 +3,14 @@
 Clone a guitar tone from a finished recording.
 
 Combines **NAM** (nonlinear amp character: gain structure, saturation, compression, sag)
-with a **EQ Match**-style matched impulse response (linear EQ/cab correction).
+with an **EQ Match**-style matched impulse response (linear EQ/cab correction).
 
 ## How it works
 
 You provide three things:
 
 1. **Target** — a recording with the tone you want: an isolated guitar track, or a full mix
-   (built-in Demucs demixing extracts the guitar stem for you)
+   (built-in Demucs demixing tries to extract the guitar stem for you)
 2. **DI** — your own clean guitar take (try to match the original recording both in content and lenght, or ideally similar playing style/register,)
 3. **NAM library** — a folder of `.nam` captures, or use the built-in **TONE3000 search**
    to browse the catalog (metadata only) and download just a shortlist
