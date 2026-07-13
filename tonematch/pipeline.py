@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .audio import db_to_lin, lin_to_db, load_audio, match_rms, rms, save_audio
+from .audio import active_segment, db_to_lin, lin_to_db, load_audio, match_rms, rms, save_audio
 from .features import extract_fingerprint
 from .match_eq import apply_fir, design_match_ir
 from .search import CandidateResult, rank_captures
@@ -72,6 +72,7 @@ def run_match(
     refine_top: int = 5,
     render_top: int = 1,
     ir_taps: int = 2048,
+    preview_s: float = 30.0,
     progress_cb=None,
 ) -> MatchOutput:
     os.makedirs(out_dir, exist_ok=True)
@@ -115,7 +116,11 @@ def run_match(
         def rig_path(suffix):
             return os.path.join(out_dir, f"{prefix}{suffix}")
 
-        amped = r.capture.process(di * db_to_lin(r.gain_db))
+        # Reamp only the most active `preview_s` seconds of the DI (0 = full DI).
+        # IRs and EQ fits use long-term spectral statistics, which converge well
+        # within ~20-30 s - this slashes per-rig render time on long DIs.
+        di_render = di if not preview_s else active_segment(di, sr, float(preview_s))
+        amped = r.capture.process(di_render * db_to_lin(r.gain_db))
         amped_fp = extract_fingerprint(amped, sr)
 
         # A) full match IR on the raw amp output
