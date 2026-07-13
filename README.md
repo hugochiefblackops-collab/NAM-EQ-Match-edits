@@ -1,17 +1,17 @@
-# NAM EQ Matcher
+# NAM EQ Matcher 🎸
 
-Clone a guitar tone from a finished recording.
+Clone a guitar tone from a finished recording — no DI from the original player needed.
 
 Combines **NAM** (nonlinear amp character: gain structure, saturation, compression, sag)
-with an **EQ Match**-style matched impulse response (linear EQ/cab correction).
+with a **Tone Match**-style matched impulse response (linear EQ/cab correction).
 
 ## How it works
 
 You provide three things:
 
 1. **Target** — a recording with the tone you want: an isolated guitar track, or a full mix
-   (built-in Demucs demixing tries to extract the guitar stem for you)
-2. **DI** — your own clean guitar take (try to match the original recording both in content and lenght, or ideally similar playing style/register,)
+   (built-in Demucs demixing extracts the guitar stem for you)
+2. **DI** — your own clean guitar take (any riff, ideally similar playing style/register)
 3. **NAM library** — a folder of `.nam` captures, or use the built-in **TONE3000 search**
    to browse the catalog (metadata only) and download just a shortlist
 
@@ -23,15 +23,24 @@ The pipeline:
    the fizz region, spectral flux, and MFCC texture statistics. These capture what an EQ
    cannot fix — clipping behavior, compression feel, harmonic density. A two-stage search
    (coarse over all captures, fine over the top 5) finds the best capture + drive setting.
-2. **Frequency match (EQ Match half).** The winning rig's output is compared to the
-   target's 1/6-octave smoothed long-term spectrum. The difference (clipped to ±18 dB,
-   tapered at the extremes) is turned into a minimum-phase FIR and exported as
-   `match_ir.wav` — load it in the NAM plugin's IR slot as your "cabinet".
+2. **Frequency match (Tone Match half).** The winning rig's output is compared to the
+   target's 1/6-octave smoothed long-term spectrum, and the gap is closed three ways —
+   pick by ear:
+   - **A: Match IR** (`_match_ir.wav`) — the exact spectral correction (±18 dB). Closest
+     match, but drastic corrections can sound artificial.
+   - **B: Plugin EQ suggestion** — fitted Bass/Mid/Treble knob values for the NAM
+     plugin's built-in tone stack (exact same filters: 150 Hz shelf / 425 Hz peak /
+     1.8 kHz shelf). Gentler and hardware-plausible; no IR needed.
+   - **C: Hybrid (recommended)** — the EQ settings plus a *gentle* residual IR
+     (`_gentle_ir.wav`, capped at ±9 dB, broad 1/3-octave smoothing). Natural EQ moves
+     do the heavy lifting; the IR only polishes what's left.
 3. **Outputs.** Best model + input gain, the match IR, a rendered preview of *your* DI
    through the full matched chain, a comparison spectrum plot, and a JSON report.
    Set *Top rigs to render* (GUI) or `--render-top N` (CLI) to get the top-N captures
-   instead of just the winner — each gets its own folder (`rank01_...`, `rank02_...`)
-   with its own `match_ir.wav` and `matched_render.wav`, so you can A/B them by ear.
+   instead of just the winner. Every rendered rig gets self-explaining, rig-prefixed
+   files (`rank01_JCM800_IN+2.0_...`): a copy of the `.nam`, a human-readable
+   `_settings.txt` with Options A/B/C, both IRs, and all three renders — so files stay
+   meaningful even when moved out of the results folder.
 
 ## Install
 
@@ -108,11 +117,19 @@ load `match_ir.wav` in the **IR slot** (disable any other cab), adjust Output to
 - Play a DI similar in register and intensity to the target part — the matcher compares
   statistics, not aligned samples, but similar material makes them comparable.
 - More diverse `.nam` libraries → better odds one capture nails the clipping character.
-- Search is CPU-heavy: ~10 reamps per capture. Use "Max captures" or a curated subfolder
+- Search is compute-heavy: ~10 reamps per capture. Use "Max captures" or a curated subfolder
   for quick passes.
+- **GPU acceleration**: NAM inference and Demucs both use CUDA automatically when your
+  PyTorch build supports it (device "auto"; force with the device dropdown / `--device cuda`).
+  The default `pip install torch` on Windows is CPU-only — for a ~10× speedup, install a
+  CUDA build instead, e.g. `pip install torch --index-url https://download.pytorch.org/whl/cu126`
+  (pick the right CUDA version for your GPU at pytorch.org/get-started). Verify with
+  `python -m tonematch.doctor` — it should print `torch device: cuda`.
 
 ## Project layout
 
+The Python package keeps the internal name `tonematch` (renaming it would break
+imports and your venv); the product name is **NAM EQ Matcher**.
 
 ```
 tonematch/
@@ -121,6 +138,7 @@ tonematch/
   match_eq.py     matched-IR design (1/6-oct smoothing, min-phase FIR)
   nam_backend.py  .nam loading (neural-amp-modeler) + MockAmp for tests
   search.py       two-stage capture ranking + input-gain search
+  tone_stack.py   NAM plugin tone stack (B/M/T) emulation + knob fitting
   stems.py        Demucs guitar-stem extraction (optional dependency)
   tone3000.py     TONE3000 API client (OAuth PKCE, search, selective download)
   pipeline.py     end-to-end orchestration + reports

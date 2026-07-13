@@ -59,19 +59,37 @@ def unwrap_container(config: dict) -> dict:
     return config
 
 
-class NamCapture:
-    """A .nam capture loaded as a PyTorch model."""
+def resolve_device(device: str | None = None) -> str:
+    """Resolve 'auto'/None to the best available torch device."""
+    import torch
 
-    def __init__(self, path: str):
+    if device in (None, "", "auto"):
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    if device.startswith("cuda") and not torch.cuda.is_available():
+        print("[warn] CUDA requested but not available - falling back to CPU. "
+              "Install a CUDA build of PyTorch (see pytorch.org) to use your GPU.")
+        return "cpu"
+    return device
+
+
+class NamCapture:
+    """A .nam capture loaded as a PyTorch model.
+
+    device: 'auto' (default) uses CUDA when available, else CPU.
+    """
+
+    def __init__(self, path: str, device: str | None = None):
         import torch
 
         self._torch = torch
+        self.device = resolve_device(device)
         init_from_nam = _import_init_from_nam()
         with open(path, "r", encoding="utf-8") as fp:
             config = json.load(fp)
         config = unwrap_container(config)
         self.model = init_from_nam(config)
         self.model.eval()
+        self.model.to(self.device)
         sr = config.get("sample_rate")
         self.sample_rate = int(sr) if sr else DEFAULT_SR
         meta = config.get("metadata") or {}
@@ -87,7 +105,9 @@ class NamCapture:
         with torch.no_grad():
             for i in range(0, len(x), chunk):
                 s = max(0, i - (rf - 1))
-                seg = torch.from_numpy(np.ascontiguousarray(x[s : i + chunk], dtype=np.float32))
+                seg = torch.from_numpy(
+                    np.ascontiguousarray(x[s : i + chunk], dtype=np.float32)
+                ).to(self.device)
                 y = self.model(seg, pad_start=(s == 0))
                 out[i : i + chunk] = y.cpu().numpy()[-(min(chunk, len(x) - i)) :]
         return out
@@ -143,7 +163,12 @@ def _tilt_filter(x: np.ndarray, sr: int, tilt_db_per_oct: float, presence_db: fl
     return np.fft.irfft(X, n=n)
 
 
-def load_captures(paths_or_dir, limit: int | None = None, errors_out: list | None = None) -> list:
+def load_captures(
+    paths_or_dir,
+    limit: int | None = None,
+    errors_out: list | None = None,
+    device: str | None = None,
+) -> list:
     """Load NamCapture objects from a directory or a list of .nam paths.
 
     Load failures are printed and, if `errors_out` is given, appended to it
@@ -165,7 +190,7 @@ def load_captures(paths_or_dir, limit: int | None = None, errors_out: list | Non
     captures = []
     for p in paths:
         try:
-            captures.append(NamCapture(p))
+            captures.append(NamCapture(p, device=device))
         except Exception as e:  # noqa: BLE001 - report and continue
             msg = f"{type(e).__name__}: {e}"
             print(f"[warn] failed to load {p}: {msg}")

@@ -104,6 +104,16 @@ def main():
     print(f"LTAS error after  match IR: {err_ren:.2f} dB")
     assert err_ren < err_raw * 0.6, "match IR did not sufficiently reduce spectral error"
 
+    # Plugin EQ (tone stack) render must also improve over the raw NAM output
+    eq_rendered, _ = load_audio(out.renders[0]["tone_stack"]["render"], SR)
+    fp_eq = extract_fingerprint(eq_rendered, SR)
+    err_eq = np.mean(np.abs(fp_eq.ltas_db - fp_t.ltas_db)[sel])
+    ts = out.renders[0]["tone_stack"]
+    print(f"LTAS error after plugin EQ: {err_eq:.2f} dB (B{ts['bass']:g}/M{ts['middle']:g}/T{ts['treble']:g})")
+    assert err_eq < err_raw, "plugin EQ render did not improve over raw NAM output"
+    assert os.path.exists(out.renders[0]["settings_txt"])
+    assert os.path.exists(out.renders[0]["hybrid"]["render"])
+
     print("\nAll assertions passed. Outputs in:", os.path.join(tmp, "results"))
 
 
