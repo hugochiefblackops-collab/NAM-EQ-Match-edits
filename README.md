@@ -42,7 +42,20 @@ The pipeline:
    `_settings.txt` with Options A/B/C, both IRs, and all three renders — so files stay
    meaningful even when moved out of the results folder.
 
-## Install
+## Quick start (no command line needed)
+
+Install Python 3.10+ from [python.org](https://www.python.org/downloads/) (on Windows,
+tick *Add Python to PATH*), then double-click the launcher for your system:
+
+- **Windows**: `Start-NAM-EQ-Matcher-Windows.bat`
+- **macOS**: `start-nam-eq-matcher-macos.command` (first time: right-click → Open;
+  if blocked, run `chmod +x start-nam-eq-matcher-macos.command` once in Terminal)
+- **Linux**: `bash start-nam-eq-matcher-linux.sh`
+
+The first run creates a private environment and installs everything (several minutes);
+after that it starts in seconds and opens the app in your browser automatically.
+
+## Manual install
 
 ```bash
 python -m venv .venv
@@ -116,6 +129,9 @@ load `match_ir.wav` in the **IR slot** (disable any other cab), adjust Output to
   slightly skew the EQ match — trust your ears over the plot.
 - Play a DI similar in register and intensity to the target part — the matcher compares
   statistics, not aligned samples, but similar material makes them comparable.
+- Renders use the loudest 30 s of your DI by default (*Render length* in Advanced /
+  `--preview-s`). The IRs and EQ fits are statistical and converge within ~20–30 s, so
+  this is a large speedup on long DIs at no accuracy cost; set 0 to render the full DI.
 - More diverse `.nam` libraries → better odds one capture nails the clipping character.
 - Search is compute-heavy: ~10 reamps per capture. Use "Max captures" or a curated subfolder
   for quick passes.

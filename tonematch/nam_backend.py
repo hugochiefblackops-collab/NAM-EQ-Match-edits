@@ -102,7 +102,7 @@ class NamCapture:
         rf = int(self.model.receptive_field)
         chunk = int(chunk_s * self.sample_rate)
         out = np.empty(len(x), dtype=np.float32)
-        with torch.no_grad():
+        with torch.inference_mode():
             for i in range(0, len(x), chunk):
                 s = max(0, i - (rf - 1))
                 seg = torch.from_numpy(

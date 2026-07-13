@@ -117,7 +117,7 @@ def t3k_download(tones, rows_text):
     return status, T3K_CACHE
 
 
-def do_match(target, di, models_dir, model_files, demix, stem, gain_lo, gain_hi, refine_top, render_top, limit, device, progress=gr.Progress()):
+def do_match(target, di, models_dir, model_files, demix, stem, gain_lo, gain_hi, refine_top, render_top, limit, device, preview_s, progress=gr.Progress()):
     if target is None or di is None:
         raise gr.Error("Please provide both a target recording and a DI track.")
 
@@ -183,6 +183,7 @@ def do_match(target, di, models_dir, model_files, demix, stem, gain_lo, gain_hi,
         gain_range_db=(float(gain_lo), float(gain_hi)),
         refine_top=max(int(refine_top), int(render_top)),
         render_top=int(render_top),
+        preview_s=float(preview_s),
         progress_cb=cb,
     )
 
@@ -292,6 +293,10 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
                     ["auto", "cpu", "cuda"], value="auto",
                     label="Processing device (auto = GPU if available)",
                 )
+                preview_s_in = gr.Slider(
+                    0, 120, value=30, step=5,
+                    label="Render length (s) - loudest section of your DI; 0 = full DI (slow)",
+                )
             go = gr.Button("Match my tone", variant="primary")
         with gr.Column():
             summary_out = gr.Markdown()
@@ -321,9 +326,9 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
 
     go.click(
         do_match,
-        inputs=[target_in, di_in, models_dir_in, model_files_in, demix_in, stem_in, gain_lo, gain_hi, refine_top, render_top, limit, device_in],
+        inputs=[target_in, di_in, models_dir_in, model_files_in, demix_in, stem_in, gain_lo, gain_hi, refine_top, render_top, limit, device_in, preview_s_in],
         outputs=[summary_out, table_out, target_audio_out, render_audio_out, eq_audio_out, hybrid_audio_out, plot_out, files_out],
     )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(inbrowser=True)

@@ -24,6 +24,8 @@ def main():
     ap.add_argument("--sr", type=int, default=48000)
     ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"],
                     help="Processing device for NAM inference (auto = GPU if available)")
+    ap.add_argument("--preview-s", type=float, default=30.0,
+                    help="Render only the loudest N seconds of the DI per rig (0 = full DI, slow)")
     ap.add_argument("--demix", action="store_true", help="Target is a full mix: extract guitar stem with Demucs first")
     ap.add_argument("--stem", default="guitar", choices=["guitar", "other", "guitar+other"], help="Stem to extract with --demix")
     args = ap.parse_args()
@@ -66,6 +68,7 @@ def main():
         gain_range_db=tuple(args.gain_range),
         refine_top=max(args.refine_top, args.render_top),
         render_top=args.render_top,
+        preview_s=args.preview_s,
         progress_cb=progress,
     )
     print()
