@@ -30,6 +30,11 @@ import requests
 T3K_API = "https://www.tone3000.com"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".tonematch", "tone3000.json")
 
+# Module-level lock around the shared token config. Multiple threads (e.g. one
+# per JobManager worker) refresh tokens through the same client singleton; this
+# keeps two refreshes from racing on the same expiring token.
+_CONFIG_LOCK = threading.Lock()
+
 GEARS = ("amp", "full-rig", "pedal", "outboard", "ir")
 SORTS = ("best-match", "newest", "oldest", "trending", "downloads-all-time")
 
@@ -52,9 +57,16 @@ def _load_config() -> dict:
 
 
 def _save_config(cfg: dict) -> None:
+    """Atomically replace the TONE3000 config file.
+
+    `os.replace` is atomic on both POSIX and Windows, so half-written config
+    can't be observed by another process/thread even if we crash mid-write.
+    """
     os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as fp:
+    tmp = CONFIG_PATH + f".tmp.{os.getpid()}"
+    with open(tmp, "w", encoding="utf-8") as fp:
         json.dump(cfg, fp, indent=2)
+    os.replace(tmp, CONFIG_PATH)
 
 
 # ----------------------------------------------------------------------------
@@ -181,30 +193,35 @@ class T3KClient:
         if not self.tokens:
             raise T3KError("Not connected to TONE3000. Run connect first.")
         if time.time() > self.tokens["expires_at"] - 60:
-            r = requests.post(
-                f"{T3K_API}/api/v1/oauth/token",
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": self.tokens["refresh_token"],
-                    "client_id": self.publishable_key,
-                },
-                timeout=30,
-            )
-            if not r.ok:
-                self.tokens = None
+            with _CONFIG_LOCK:
+                # Re-check inside the lock; another thread may have refreshed
+                # while we were waiting.
+                if not self.tokens or time.time() <= self.tokens["expires_at"] - 60:
+                    return self.tokens["access_token"]
+                r = requests.post(
+                    f"{T3K_API}/api/v1/oauth/token",
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": self.tokens["refresh_token"],
+                        "client_id": self.publishable_key,
+                    },
+                    timeout=30,
+                )
+                if not r.ok:
+                    self.tokens = None
+                    cfg = _load_config()
+                    cfg.pop("tokens", None)
+                    _save_config(cfg)
+                    raise T3KError("Session expired - please connect to TONE3000 again.")
+                data = r.json()
+                self.tokens = {
+                    "access_token": data["access_token"],
+                    "refresh_token": data["refresh_token"],
+                    "expires_at": time.time() + data["expires_in"],
+                }
                 cfg = _load_config()
-                cfg.pop("tokens", None)
+                cfg["tokens"] = self.tokens
                 _save_config(cfg)
-                raise T3KError("Session expired - please connect to TONE3000 again.")
-            data = r.json()
-            self.tokens = {
-                "access_token": data["access_token"],
-                "refresh_token": data["refresh_token"],
-                "expires_at": time.time() + data["expires_in"],
-            }
-            cfg = _load_config()
-            cfg["tokens"] = self.tokens
-            _save_config(cfg)
         return self.tokens["access_token"]
 
     def _get(self, path: str, params: dict | None = None) -> dict:

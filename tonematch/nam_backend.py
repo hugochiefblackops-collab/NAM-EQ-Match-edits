@@ -177,9 +177,10 @@ def load_captures(
     if isinstance(paths_or_dir, str):
         if os.path.isdir(paths_or_dir):
             paths = sorted(
-                os.path.join(paths_or_dir, p)
-                for p in os.listdir(paths_or_dir)
-                if p.lower().endswith(".nam")
+                os.path.join(root, f)
+                for root, _, files in os.walk(paths_or_dir)
+                for f in files
+                if f.lower().endswith(".nam")
             )
         else:
             paths = [paths_or_dir]

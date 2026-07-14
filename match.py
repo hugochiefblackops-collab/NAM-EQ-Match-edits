@@ -22,6 +22,10 @@ def main():
     ap.add_argument("--render-top", type=int, default=1, help="Render the top N rigs, each with its own match IR")
     ap.add_argument("--limit", type=int, default=None, help="Max captures to load")
     ap.add_argument("--sr", type=int, default=48000)
+    ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"],
+                    help="Processing device for NAM inference (auto = GPU if available)")
+    ap.add_argument("--preview-s", type=float, default=30.0,
+                    help="Render only the loudest N seconds of the DI per rig (0 = full DI, slow)")
     ap.add_argument("--demix", action="store_true", help="Target is a full mix: extract guitar stem with Demucs first")
     ap.add_argument("--stem", default="guitar", choices=["guitar", "other", "guitar+other"], help="Stem to extract with --demix")
     args = ap.parse_args()
@@ -37,14 +41,15 @@ def main():
         )
         print(f"Stem written to {target_path}")
 
-    from tonematch.nam_backend import load_captures
+    from tonematch.nam_backend import load_captures, resolve_device
     from tonematch.pipeline import run_match
 
-    captures = load_captures(args.models, limit=args.limit)
+    dev = resolve_device(args.device)
+    captures = load_captures(args.models, limit=args.limit, device=dev)
     if not captures:
         print("No .nam captures loaded.", file=sys.stderr)
         sys.exit(1)
-    print(f"Loaded {len(captures)} capture(s). Searching...")
+    print(f"Loaded {len(captures)} capture(s) on {dev}. Searching...")
 
     last = [""]
 
@@ -63,38 +68,26 @@ def main():
         gain_range_db=tuple(args.gain_range),
         refine_top=max(args.refine_top, args.render_top),
         render_top=args.render_top,
+        preview_s=args.preview_s,
         progress_cb=progress,
     )
     print()
+    ts = out.renders[0]["tone_stack"]
     print(f"\nBest match: {out.best.name}")
     print(f"  input gain : {out.best.gain_db:+.1f} dB")
+    print(f"  plugin EQ  : Bass {ts['bass']:g}, Middle {ts['middle']:g}, Treble {ts['treble']:g}")
     print(f"  score      : {out.best.score:.4f}")
-    
-    best_eq = out.renders[0]["gateway_eq"]
-    print(f"  Gateway EQ : Bass {best_eq['bass']:.1f}, Middle {best_eq['middle']:.1f}, Treble {best_eq['treble']:.1f}")
-    print(f"  EQ-only render: {best_eq['render']}")
-    if out.renders[0].get("nam_copy"):
-        print(f"  NAM copy   : {out.renders[0]['nam_copy']}")
-    print(f"  settings   : {out.renders[0]['settings_txt']}")
-
     if len(out.renders) > 1:
-        print(f"\nRendered {len(out.renders)} rigs:")
+        print(f"\nRendered {len(out.renders)} rigs (each with match IR, plugin EQ, and hybrid):")
         for r in out.renders:
-            print(f"  #{r['rank']} {r['name']} (gain {r['input_gain_db']:+.1f} dB):")
-            if r.get("nam_copy"):
-                print(f"    NAM copy       : {r['nam_copy']}")
-            print(f"    Settings       : {r['settings_txt']}")
-            print(f"    Match IR       : {r['ir']}")
-            print(f"    Matched render : {r['render']}")
-            req = r["gateway_eq"]
-            print(f"    Gateway EQ     : Bass {req['bass']:.1f}, Middle {req['middle']:.1f}, Treble {req['treble']:.1f}")
-            print(f"    EQ render      : {req['render']}")
-
+            t = r["tone_stack"]
+            print(
+                f"  #{r['rank']} {r['name']}  gain {r['input_gain_db']:+.1f} dB  "
+                f"EQ B{t['bass']:g}/M{t['middle']:g}/T{t['treble']:g}  ->  {r['settings_txt']}"
+            )
     print(f"\nOutputs in {args.out}:")
     print(f"  match IR   : {out.ir_path}")
     print(f"  render     : {out.render_path}")
-    print(f"  EQ render  : {out.eq_render_path}")
-    print(f"  settings   : {out.settings_path}")
     print(f"  report     : {out.report_path}")
     if out.plot_path:
         print(f"  plot       : {out.plot_path}")

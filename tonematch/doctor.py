@@ -135,7 +135,10 @@ def main():
     for a in args:
         if os.path.isdir(a):
             targets.extend(
-                os.path.join(a, p) for p in sorted(os.listdir(a)) if p.lower().endswith(".nam")
+                os.path.join(root, f)
+                for root, _, files in os.walk(a)
+                for f in files
+                if f.lower().endswith(".nam")
             )
         else:
             targets.append(a)

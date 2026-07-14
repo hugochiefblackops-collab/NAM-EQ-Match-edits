@@ -298,18 +298,27 @@ def _write_settings_txt(path: str, entry: dict, fit) -> None:
 
 
 def _plot_match(path, target, sr, rendered, grid, corr_db, amped=None, eq_rendered=None, fit=None):
+    """Thread-safe spectrum plot.
+
+    Uses the matplotlib object-oriented API directly (Figure / FigureCanvasAgg)
+    instead of `pyplot`, which keeps a global current-figure stack that is not
+    safe under concurrent calls. Safe to call from multiple threads in parallel.
+    """
     import matplotlib
 
     matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
     from .tone_stack import band_response_db, stack_response_db
 
     fp_t = extract_fingerprint(target, sr)
     fp_r = extract_fingerprint(rendered, sr)
 
     n_rows = 3 if fit is not None else 2
-    fig, axes = plt.subplots(n_rows, 1, figsize=(9, 3.2 * n_rows), sharex=True)
+
+    fig = Figure(figsize=(9, 3.2 * n_rows))
+    FigureCanvasAgg(fig)
+    axes = fig.subplots(n_rows, 1, sharex=True)
 
     ax1 = axes[0]
     ax1.semilogx(fp_t.ltas_grid, fp_t.ltas_db, label="target", lw=2)
@@ -350,5 +359,4 @@ def _plot_match(path, target, sr, rendered, grid, corr_db, amped=None, eq_render
     axes[-1].set_xlim(30, sr / 2)
     fig.tight_layout()
     fig.savefig(path, dpi=110)
-    plt.close(fig)
     return path

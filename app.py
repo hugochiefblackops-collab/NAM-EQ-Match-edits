@@ -36,11 +36,13 @@ DESCRIPTION = """
 1. **Target**: a recording with the tone you want — an isolated guitar track, or a **full mix**
    (tick *Extract guitar stem* and Demucs will demix it first).
 2. **DI**: your own clean (unamped) guitar take.
-3. **NAM library**: a folder of `.nam` captures, or a **curated library** saved from the Library tab.
+3. **NAM library**: a folder of `.nam` captures, or a **curated library** saved from the Library tab,
+   or search **TONE3000** below and download only the shortlist you want to try.
 
 NAM EQ Matcher reamps your DI through every capture, searches the input gain that matches the
 target's **saturation & compression character**, then designs a **match IR** that corrects
-the remaining EQ/cab difference.
+the remaining EQ/cab difference. You get the winning model + gain setting + IR to load
+straight into the NAM plugin.
 
 Queue multiple jobs — tweak settings and hit **Run** again to queue another. Check the **Jobs** tab for progress, then **Results** to audition and download.
 """
@@ -49,7 +51,8 @@ Queue multiple jobs — tweak settings and hit **Run** again to queue another. C
 # Session persistence (minimal — last browsed directories only)
 # ---------------------------------------------------------------------------
 
-_SESSION_KEYS = {"last_models_dir", "last_download_dir", "last_scan_folder", "last_materials"}
+_SESSION_KEYS = {"last_models_dir", "last_download_dir", "last_scan_folder", "last_materials",
+                 "last_device", "last_preview_s"}
 
 
 def _load_session() -> dict:
@@ -162,7 +165,9 @@ def t3k_download(tones, rows_text):
 # ---------------------------------------------------------------------------
 
 def _rig_label(r):
-    return f"#{r['rank']} {r['name']} (gain {r['input_gain_db']:+.1f} dB)"
+    ts = r.get("tone_stack") or {}
+    eq = f", EQ B{ts['bass']:g}/M{ts['middle']:g}/T{ts['treble']:g}" if ts else ""
+    return f"#{r['rank']} {r['name']} (gain {r['input_gain_db']:+.1f} dB{eq})"
 
 
 def _browse_for_folder():
@@ -183,11 +188,18 @@ def _browse_for_folder():
 # Results-panel builder
 # ---------------------------------------------------------------------------
 
+ALL_MATERIALS = ["NAM model", "Settings (.txt)", "Match IR",
+                 "Plugin EQ render", "IR-matched render",
+                 "Hybrid render", "Gentle IR",
+                 "Report (report.json)", "Target reference",
+                 "Spectrum plot", "Demuxed stem"]
+
+
 def _build_results(job):
     """Return the output values for the Results tab from a Job."""
     result = job.result
     best = result.report["best_model"]
-    best_eq = result.renders[0]["gateway_eq"]
+    best_ts = result.renders[0]["tone_stack"]
 
     rows = [
         [i + 1, r.name, f"{r.gain_db:+.1f}", f"{r.score:.4f}",
@@ -199,10 +211,10 @@ def _build_results(job):
         f"### Best match: **{best['name']}**\n"
         f"- Input gain: **{best['input_gain_db']:+.1f} dB**\n"
         f"- Model file: `{best['file']}`\n\n"
-        f"### Gateway EQ Settings:\n"
-        f"- **Bass**: {best_eq['bass']:.1f} (Gain: {best_eq['bass_gain_db']:+.1f} dB)\n"
-        f"- **Middle**: {best_eq['middle']:.1f} (Gain: {best_eq['middle_gain_db']:+.1f} dB)\n"
-        f"- **Treble**: {best_eq['treble']:.1f} (Gain: {best_eq['treble_gain_db']:+.1f} dB)\n\n"
+        f"### Plugin EQ Settings:\n"
+        f"- **Bass**: {best_ts['bass']:g} (Gain: {best_ts['bass_gain_db']:+.1f} dB)\n"
+        f"- **Middle**: {best_ts['middle']:g} (Gain: {best_ts['middle_gain_db']:+.1f} dB)\n"
+        f"- **Treble**: {best_ts['treble']:g} (Gain: {best_ts['treble_gain_db']:+.1f} dB)\n\n"
         f"**How to use:**\n{result.report['how_to_use']}"
     )
     if len(result.renders) > 1:
@@ -222,8 +234,10 @@ def _build_results(job):
             dl_mapping[(rank, "NAM model")] = r["nam_copy"]
         dl_mapping[(rank, "Settings (.txt)")] = r["settings_txt"]
         dl_mapping[(rank, "Match IR")] = r["ir"]
-        dl_mapping[(rank, "Gateway EQ render")] = r["gateway_eq"]["render"]
+        dl_mapping[(rank, "Plugin EQ render")] = r["tone_stack"]["render"]
         dl_mapping[(rank, "IR-matched render")] = r["render"]
+        dl_mapping[(rank, "Hybrid render")] = r["hybrid"]["render"]
+        dl_mapping[(rank, "Gentle IR")] = r["hybrid"]["gentle_ir"]
         if r.get("plot"):
             dl_mapping[(rank, "Spectrum plot")] = r["plot"]
 
@@ -236,17 +250,17 @@ def _build_results(job):
 
     first_rank = rig_values[0] if rig_values else None
 
-    ALL_MATERIALS = ["NAM model", "Settings (.txt)", "Match IR",
-                     "Gateway EQ render", "IR-matched render",
-                     "Report (report.json)", "Target reference",
-                     "Spectrum plot", "Demuxed stem"]
+    plot_file = result.renders[0].get("plot") or result.plot_path
+    for r in result.renders:
+        r["plot"] = plot_file
 
     return (
         summary,
         rows,
         result.target_ref_path,
         result.renders[0]["render"],
-        result.renders[0]["gateway_eq"]["render"],
+        result.renders[0]["tone_stack"]["render"],
+        result.renders[0]["hybrid"]["render"],
         result.renders[0].get("plot") or result.plot_path,
         result.renders,
         dl_mapping,
@@ -505,7 +519,7 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
     # Tabs
     # ==================================================================
 
-    with gr.Tabs():
+    with gr.Tabs(selected=1):
         # ==============================================================
         # Library tab
         # ==============================================================
@@ -552,7 +566,7 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
         # ==============================================================
         # Workflow tab
         # ==============================================================
-        with gr.Tab("Workflow"):
+        with gr.Tab("Workflow", id=1):
             with gr.Row():
                 with gr.Column():
                     with gr.Row():
@@ -615,6 +629,14 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
                         refine_top_in = gr.Slider(1, 10, value=5, step=1, label="Captures to refine")
                         render_top_in = gr.Slider(1, 10, value=1, step=1, label="Rigs to render")
                         limit_in = gr.Number(value=0, precision=0, label="Max captures (0 = all)")
+                        device_in = gr.Dropdown(
+                            ["auto", "cpu", "cuda"], value="auto",
+                            label="Processing device (auto = GPU if available)",
+                        )
+                        preview_s_in = gr.Slider(
+                            0, 120, value=30, step=5,
+                            label="Render length (s) — loudest section of DI; 0 = full DI (slow)",
+                        )
 
                     go = gr.Button("Match my tone", variant="primary")
                     run_status = gr.Markdown()
@@ -647,7 +669,8 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
 
             target_audio_out = gr.Audio(label="A: Target (reference)")
             rig_render_out = gr.Audio(label="B: DI through matched rig + Match IR")
-            rig_eq_out = gr.Audio(label="C: DI through matched rig + Gateway EQ")
+            rig_eq_out = gr.Audio(label="C: DI through matched rig + Plugin EQ")
+            rig_hybrid_out = gr.Audio(label="D: DI through matched rig + Plugin EQ + gentle IR (recommended)")
             plot_out = gr.Image(label="Spectrum match")
 
             dl_mapping_state = gr.State({})
@@ -657,7 +680,8 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
             dl_material_toggle = gr.CheckboxGroup(
                 label="Materials to include",
                 choices=["NAM model", "Settings (.txt)", "Match IR",
-                         "Gateway EQ render", "IR-matched render",
+                         "Plugin EQ render", "IR-matched render",
+                         "Hybrid render", "Gentle IR",
                          "Report (report.json)", "Target reference",
                          "Spectrum plot", "Demuxed stem"],
                 value=["NAM model", "Settings (.txt)", "Match IR"],
@@ -805,7 +829,7 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
 
     # --- Run button ---
     def _on_run(target, di, source_mode, models_dir, library_name, demix, stem,
-                gain_lo, gain_hi, refine_top, render_top, limit):
+                gain_lo, gain_hi, refine_top, render_top, limit, device, preview_s):
         if target is None or di is None:
             raise gr.Error("Please provide both a target recording and a DI track.")
         params = {
@@ -813,6 +837,8 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
             "gain_lo": gain_lo, "gain_hi": gain_hi,
             "refine_top": refine_top, "render_top": render_top,
             "limit": limit,
+            "device": device,
+            "preview_s": preview_s,
         }
         if source_mode == "Library":
             if not library_name:
@@ -836,7 +862,7 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
         _on_run,
         inputs=[target_in, di_in, source_mode, models_dir_in, wf_lib_dd,
                 demix_in, stem_in, gain_lo_in, gain_hi_in,
-                refine_top_in, render_top_in, limit_in],
+                refine_top_in, render_top_in, limit_in, device_in, preview_s_in],
         outputs=[run_status, jobs_snapshot_state, jobs_table],
     )
 
@@ -855,7 +881,7 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
         _load_result_job,
         inputs=[results_job_selector],
         outputs=[summary_out, table_out,
-                 target_audio_out, rig_render_out, rig_eq_out, plot_out,
+                 target_audio_out, rig_render_out, rig_eq_out, rig_hybrid_out, plot_out,
                  renders_state, dl_mapping_state,
                  rig_select, dl_material_toggle, dl_rig_toggle,
                  btn_dl_selected, btn_dl_all],
@@ -866,19 +892,19 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
         if not renders:
             raise gr.Error("No rig selected.")
         if value is None:
-            return None, None, None
+            return None, None, None, None
         if isinstance(value, (int, float)):
             r = next((x for x in renders if x["rank"] == int(value)), None)
         else:
             r = next((x for x in renders if _rig_label(x) == str(value)), None)
         if r is None:
             raise gr.Error("Rig not found in results.")
-        return r["render"], r["gateway_eq"]["render"], r.get("plot")
+        return r["render"], r["tone_stack"]["render"], r["hybrid"]["render"], r.get("plot")
 
     rig_select.change(
         _on_rig_change,
         inputs=[rig_select, renders_state],
-        outputs=[rig_render_out, rig_eq_out, plot_out],
+        outputs=[rig_render_out, rig_eq_out, rig_hybrid_out, plot_out],
     )
 
     # --- Download toggles ---
@@ -921,12 +947,15 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
             gr.update(choices=lib_choices),
             gr.update(choices=wf_choices),
             gr.update(value=saved_materials) if saved_materials else gr.update(),
+            sess.get("last_device", "auto"),
+            sess.get("last_preview_s", 30),
         )
 
     demo.load(
         _on_load,
         outputs=[models_dir_in, download_folder_in, lib_folder_in,
-                 lib_lib_check, wf_lib_dd, dl_material_toggle],
+                 lib_lib_check, wf_lib_dd, dl_material_toggle,
+                 device_in, preview_s_in],
     )
 
     def _save_materials(materials):
