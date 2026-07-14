@@ -27,11 +27,12 @@ The pipeline:
    target's 1/6-octave smoothed long-term spectrum. The difference (clipped to ±18 dB,
    tapered at the extremes) is turned into a minimum-phase FIR and exported as
    `match_ir.wav` — load it in the NAM plugin's IR slot as your "cabinet".
-3. **Outputs.** Best model + input gain, the match IR, a rendered preview of *your* DI
-   through the full matched chain, a comparison spectrum plot, and a JSON report.
+3. **Outputs.** The winning model's NAM copy, a match IR, a rendered preview of *your* DI
+   through the full matched chain, a Gateway EQ-only render, a settings text file, a comparison spectrum plot, and a JSON report.
+   All files use rig-educated names (e.g. `rank01_JCM800_IN+2.0_match_ir.wav`, etc.).
    Set *Top rigs to render* (GUI) or `--render-top N` (CLI) to get the top-N captures
-   instead of just the winner — each gets its own folder (`rank01_...`, `rank02_...`)
-   with its own `match_ir.wav` and `matched_render.wav`, so you can A/B them by ear.
+   instead of just the winner — each rendered capture gets its own complete set of files
+   (NAM copy, settings txt, match IR, matched render, and Gateway EQ render), making A/B testing simple.
 
 ## Install
 
@@ -49,6 +50,15 @@ pip install -r requirements.txt
 python app.py
 # open http://127.0.0.1:7860
 ```
+
+**Standalone desktop window (recommended — no browser tab to accidentally close):**
+
+```bash
+pip install pywebview      # already in requirements.txt
+python launch_nam_matcher_app.pyw
+```
+
+Opens the same Gradio UI in its own OS window. Closing the window while a match run is in progress prompts for confirmation; closing it idle exits silently. (On Windows, uses Edge WebView2 — already present on Win10/11.)
 
 **CLI:**
 
@@ -93,10 +103,21 @@ python match.py --target stem.wav --di my_di.wav --models ./t3k_cache
 python -m tests.test_synthetic
 ```
 
-## Using the result
+NAM EQ Matcher outputs two matching options:
 
-In the NAM plugin: load the winning `.nam` file, set **Input** to the reported gain (dB),
-load `match_ir.wav` in the **IR slot** (disable any other cab), adjust Output to taste.
+### Option A: Match IR (Closest Match)
+1. Load the copied NAM model file (e.g., `rank01_ModelName_IN+gain.nam`).
+2. Set the **Input** gain to the reported value (dB) in the NAM plugin.
+3. Load the matched IR `.wav` file in the plugin's **IR slot** (or any external IR loader).
+4. Disable any other cabinet simulations, then adjust **Output** to taste.
+
+### Option B: Gateway EQ Only (Simpler, Organic Tone Stack)
+1. Load the copied NAM model file.
+2. Set the **Input** gain to the reported value (dB) in the NAM plugin.
+3. Disable the plugin's **IR slot** and any other cabinet simulations.
+4. Enable the **Gateway EQ** tone stack in the plugin (or physical amplifier settings).
+5. Set **Bass**, **Middle**, and **Treble** dials to the suggested values from the settings text file.
+6. Adjust **Output** to taste.
 
 ## Tips
 
@@ -118,6 +139,7 @@ load `match_ir.wav` in the **IR slot** (disable any other cab), adjust Output to
 tonematch/
   audio.py        I/O, resampling, envelopes, segment selection
   features.py     tone fingerprint (dynamics, saturation, texture) + LTAS
+  gateway_eq.py   Gateway 3-band tone-stack EQ modeling + fitting
   match_eq.py     matched-IR design (1/6-oct smoothing, min-phase FIR)
   nam_backend.py  .nam loading (neural-amp-modeler) + MockAmp for tests
   search.py       two-stage capture ranking + input-gain search

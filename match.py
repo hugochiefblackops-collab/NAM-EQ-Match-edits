@@ -69,13 +69,32 @@ def main():
     print(f"\nBest match: {out.best.name}")
     print(f"  input gain : {out.best.gain_db:+.1f} dB")
     print(f"  score      : {out.best.score:.4f}")
+    
+    best_eq = out.renders[0]["gateway_eq"]
+    print(f"  Gateway EQ : Bass {best_eq['bass']:.1f}, Middle {best_eq['middle']:.1f}, Treble {best_eq['treble']:.1f}")
+    print(f"  EQ-only render: {best_eq['render']}")
+    if out.renders[0].get("nam_copy"):
+        print(f"  NAM copy   : {out.renders[0]['nam_copy']}")
+    print(f"  settings   : {out.renders[0]['settings_txt']}")
+
     if len(out.renders) > 1:
-        print(f"\nRendered {len(out.renders)} rigs (each with its own match IR):")
+        print(f"\nRendered {len(out.renders)} rigs:")
         for r in out.renders:
-            print(f"  #{r['rank']} {r['name']}  gain {r['input_gain_db']:+.1f} dB  ->  {r['ir']}")
+            print(f"  #{r['rank']} {r['name']} (gain {r['input_gain_db']:+.1f} dB):")
+            if r.get("nam_copy"):
+                print(f"    NAM copy       : {r['nam_copy']}")
+            print(f"    Settings       : {r['settings_txt']}")
+            print(f"    Match IR       : {r['ir']}")
+            print(f"    Matched render : {r['render']}")
+            req = r["gateway_eq"]
+            print(f"    Gateway EQ     : Bass {req['bass']:.1f}, Middle {req['middle']:.1f}, Treble {req['treble']:.1f}")
+            print(f"    EQ render      : {req['render']}")
+
     print(f"\nOutputs in {args.out}:")
     print(f"  match IR   : {out.ir_path}")
     print(f"  render     : {out.render_path}")
+    print(f"  EQ render  : {out.eq_render_path}")
+    print(f"  settings   : {out.settings_path}")
     print(f"  report     : {out.report_path}")
     if out.plot_path:
         print(f"  plot       : {out.plot_path}")
