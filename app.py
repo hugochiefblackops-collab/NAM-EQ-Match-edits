@@ -59,9 +59,7 @@ def t3k_connect(key):
 
 
 def _rig_label(r):
-    ts = r.get("tone_stack") or {}
-    eq = f", EQ B{ts['bass']:g}/M{ts['middle']:g}/T{ts['treble']:g}" if ts else ""
-    return f"#{r['rank']} {r['name']} (gain {r['input_gain_db']:+.1f} dB{eq})"
+    return f"#{r['rank']} {r['name']} (gain {r['input_gain_db']:+.1f} dB)"
 
 
 def t3k_search(query, amps_text, gear, sort):
@@ -117,7 +115,7 @@ def t3k_download(tones, rows_text):
     return status, T3K_CACHE
 
 
-def do_match(target, di, models_dir, model_files, demix, stem, gain_lo, gain_hi, refine_top, render_top, limit, device, preview_s, progress=gr.Progress()):
+def do_match(target, di, models_dir, model_files, demix, stem, gain_lo, gain_hi, refine_top, render_top, limit, progress=gr.Progress()):
     if target is None or di is None:
         raise gr.Error("Please provide both a target recording and a DI track.")
 
@@ -145,15 +143,10 @@ def do_match(target, di, models_dir, model_files, demix, stem, gain_lo, gain_hi,
     if not sources:
         raise gr.Error("Point me at a folder of .nam files or upload some.")
 
-    from tonematch.nam_backend import resolve_device
-
-    dev = resolve_device(device)
-    progress(0.0, desc=f"Loading NAM captures ({dev})...")
+    progress(0.0, desc="Loading NAM captures...")
     captures, load_errors = [], []
     for s in sources:
-        captures.extend(
-            load_captures(s, limit=int(limit) if limit else None, errors_out=load_errors, device=dev)
-        )
+        captures.extend(load_captures(s, limit=int(limit) if limit else None, errors_out=load_errors))
     # dedupe by path
     seen, uniq = set(), []
     for c in captures:
@@ -183,7 +176,6 @@ def do_match(target, di, models_dir, model_files, demix, stem, gain_lo, gain_hi,
         gain_range_db=(float(gain_lo), float(gain_hi)),
         refine_top=max(int(refine_top), int(render_top)),
         render_top=int(render_top),
-        preview_s=float(preview_s),
         progress_cb=cb,
     )
 
@@ -192,24 +184,19 @@ def do_match(target, di, models_dir, model_files, demix, stem, gain_lo, gain_hi,
         for i, r in enumerate(result.ranked[:15])
     ]
     best = result.report["best_model"]
-    ts = result.renders[0]["tone_stack"]
     summary = (
         f"### 🏆 Best match: **{best['name']}**\n"
         f"- Input gain: **{best['input_gain_db']:+.1f} dB**\n"
-        f"- Plugin EQ suggestion: **Bass {ts['bass']:g} · Middle {ts['middle']:g} · Treble {ts['treble']:g}**\n"
         f"- Model file: `{best['file']}`\n\n"
         f"**{result.report['how_to_use']}**"
     )
     if len(result.renders) > 1:
-        summary += "\n\n### Rendered rigs (each with IR + EQ + hybrid)\n" + "\n".join(
+        summary += "\n\n### Rendered rigs (each with its own match IR)\n" + "\n".join(
             f"- {_rig_label(r)}" for r in result.renders
         )
     files = [result.report_path]
     for r in result.renders:
-        if r.get("nam_copy"):
-            files.append(r["nam_copy"])
-        files.extend([r["settings_txt"], r["ir"], r["render"], r["tone_stack"]["render"],
-                      r["hybrid"]["gentle_ir"], r["hybrid"]["render"]])
+        files.extend([r["ir"], r["render"]])
     if result.plot_path:
         files.append(result.plot_path)
     if stem_path:
@@ -219,8 +206,6 @@ def do_match(target, di, models_dir, model_files, demix, stem, gain_lo, gain_hi,
         rows,
         result.target_ref_path,
         result.render_path,
-        result.renders[0]["tone_stack"]["render"],
-        result.renders[0]["hybrid"]["render"],
         result.plot_path,
         files,
     )
@@ -289,14 +274,6 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
                     label="Top rigs to render — each gets its own match IR",
                 )
                 limit = gr.Number(value=0, precision=0, label="Max captures to load (0 = all)")
-                device_in = gr.Dropdown(
-                    ["auto", "cpu", "cuda"], value="auto",
-                    label="Processing device (auto = GPU if available)",
-                )
-                preview_s_in = gr.Slider(
-                    0, 120, value=30, step=5,
-                    label="Render length (s) - loudest section of your DI; 0 = full DI (slow)",
-                )
             go = gr.Button("Match my tone", variant="primary")
         with gr.Column():
             summary_out = gr.Markdown()
@@ -306,11 +283,9 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
                 interactive=False,
             )
             target_audio_out = gr.Audio(label="A: Target (reference)")
-            render_audio_out = gr.Audio(label="B: NAM + match IR (#1, closest match)")
-            eq_audio_out = gr.Audio(label="C: NAM + plugin EQ only (#1, most natural)")
-            hybrid_audio_out = gr.Audio(label="D: NAM + plugin EQ + gentle IR (#1, recommended)")
+            render_audio_out = gr.Audio(label="B: Your DI through the matched rig (#1)")
             plot_out = gr.Image(label="Spectrum match")
-            files_out = gr.Files(label="Downloads (per rig: .nam copy, settings.txt, IRs, renders; plus report & plot)")
+            files_out = gr.Files(label="Downloads (match IRs, renders, report, plot)")
 
     t3k_connect_btn.click(t3k_connect, inputs=[t3k_key_in], outputs=[t3k_status])
     t3k_search_btn.click(
@@ -326,9 +301,9 @@ with gr.Blocks(title="NAM EQ Matcher") as demo:
 
     go.click(
         do_match,
-        inputs=[target_in, di_in, models_dir_in, model_files_in, demix_in, stem_in, gain_lo, gain_hi, refine_top, render_top, limit, device_in, preview_s_in],
-        outputs=[summary_out, table_out, target_audio_out, render_audio_out, eq_audio_out, hybrid_audio_out, plot_out, files_out],
+        inputs=[target_in, di_in, models_dir_in, model_files_in, demix_in, stem_in, gain_lo, gain_hi, refine_top, render_top, limit],
+        outputs=[summary_out, table_out, target_audio_out, render_audio_out, plot_out, files_out],
     )
 
 if __name__ == "__main__":
-    demo.launch(inbrowser=True)
+    demo.launch()
